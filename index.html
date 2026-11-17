@@ -371,9 +371,9 @@ button:disabled{opacity:.5}
       c.strokeStyle='#d6006f';c.lineWidth=7*px;c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();
       [a,b].forEach(function(p){c.fillStyle='#d6006f';c.beginPath();c.arc(p.x,p.y,6*px,0,7);c.fill();c.lineWidth=2*px;c.strokeStyle='#fff';c.stroke()});
       var bn=($('#m_berth').value||'').trim(),lbl='BERTH'+(bn?' '+bn:'');
-      c.font='600 '+(13*px)+'px "IBM Plex Sans",sans-serif';c.textAlign='center';c.textBaseline='middle';
-      var tw=c.measureText(lbl).width+12*px,mx=(a.x+b.x)/2,my=(a.y+b.y)/2-22*px;
-      c.fillStyle='#fff';c.fillRect(mx-tw/2,my-10*px,tw,20*px);c.strokeStyle='#d6006f';c.lineWidth=1.5*px;c.strokeRect(mx-tw/2,my-10*px,tw,20*px);c.fillStyle='#111';c.fillText(lbl,mx,my+px*.5);
+      c.font='600 '+(10.5*px)+'px "IBM Plex Sans",sans-serif';c.textAlign='center';c.textBaseline='middle';
+      var tw=c.measureText(lbl).width+9*px,mx=(a.x+b.x)/2,my=(a.y+b.y)/2-16*px;
+      c.fillStyle='#fff';c.fillRect(mx-tw/2,my-8*px,tw,16*px);c.strokeStyle='#d6006f';c.lineWidth=1.2*px;c.strokeRect(mx-tw/2,my-8*px,tw,16*px);c.fillStyle='#111';c.fillText(lbl,mx,my+px*.4);
     }
     if(S.berthTmp){var q=pt(S.berthTmp);c.fillStyle='#d6006f';c.beginPath();c.arc(q.x,q.y,8*px,0,7);c.fill();c.lineWidth=2*px;c.strokeStyle='#fff';c.stroke()}
     S.tugs.forEach(function(t,i){
@@ -651,9 +651,10 @@ button:disabled{opacity:.5}
   function toast(t,k){var m=$('#msg');m.textContent=t;m.className=k||''}
   function clean(s){return String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\x20-\x7E\n]/g,'?')}
   function fmtDT(v){if(!v)return '';var m=/^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})/.exec(v);return m?m[3]+'/'+m[2]+'/'+m[1]+' '+m[4]+' LT':v}
-  function mapExport(){
+  function mapExport(wmm){
+    // marker size is fixed in millimetres on paper, whatever the chart size: 150/wmm gives a 3 mm waypoint dot and a 4.5 mm tug box
     var E=Math.min(S.img.naturalWidth||2400,2400),c=document.createElement('canvas');c.width=E;c.height=Math.round(E*S.CH/1000);
-    var g=c.getContext('2d');g.setTransform(E/1000,0,0,E/1000,0,0);drawScene(g,'#ffffff',{k:1,tx:0,ty:0},1000/520,S.CH);
+    var g=c.getContext('2d');g.setTransform(E/1000,0,0,E/1000,0,0);drawScene(g,'#ffffff',{k:1,tx:0,ty:0},150/wmm,S.CH);
     return c.toDataURL('image/jpeg',0.88);
   }
   function buildPdf(){
@@ -720,7 +721,7 @@ button:disabled{opacity:.5}
     sec('Maneuver plan - '+PT.name);
     var ratio=S.CH/1000,availH=282-y-16,w=CW,h=w*ratio;
     if(h>availH){h=availH;w=h/ratio}
-    var ix=M+(CW-w)/2;doc.addImage(mapExport(),'JPEG',ix,y,w,h);doc.setDrawColor(line[0],line[1],line[2]);doc.setLineWidth(.3);doc.rect(ix,y,w,h);y+=h+4;
+    var ix=M+(CW-w)/2;doc.addImage(mapExport(w),'JPEG',ix,y,w,h);doc.setDrawColor(line[0],line[1],line[2]);doc.setLineWidth(.3);doc.rect(ix,y,w,h);y+=h+4;
     doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(gray[0],gray[1],gray[2]);
     doc.text('Legend: dashed black line = vessel route (S = start, numbers = waypoints, arrow = direction); white boxes T1.. = tugs; magenta bar = berth face.',M,y);y+=3.8;
 
