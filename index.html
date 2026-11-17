@@ -39,6 +39,8 @@ body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
 .top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:4px}
+.hbtns{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;flex:none}
+.hbtns button{padding:0 12px;font-size:13px}
 h1{font-family:var(--f-display);font-size:22px;line-height:1.15;margin:0;font-weight:700;text-wrap:balance}
 .sub{margin:2px 0 0;color:var(--muted);font-size:13px}
 h2{font-family:var(--f-display);font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 12px;color:var(--accent);font-weight:700}
@@ -110,7 +112,10 @@ button:disabled{opacity:.5}
       <h1>Constanta Maneuver Plan</h1>
       <p class="sub">Pilot and Master berthing plan: Constanta North, Agigea, Midia, Mangalia</p>
     </div>
-    <button id="reset" class="ghost" type="button">New plan</button>
+    <div class="hbtns">
+      <button id="theme" class="ghost" type="button">Dark theme</button>
+      <button id="reset" class="ghost" type="button">New plan</button>
+    </div>
   </header>
 
   <!-- STEP 1 -->
@@ -795,6 +800,26 @@ button:disabled{opacity:.5}
   });
 
   /* ---------- init ---------- */
+  /* ---------- light / dark theme switch ---------- */
+  var THEME_KEY='constanta-maneuver-theme';
+  function curTheme(){
+    var t=document.documentElement.getAttribute('data-theme');
+    if(t==='light'||t==='dark')return t;
+    return (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';
+  }
+  function themeLabel(){var t=curTheme();$('#theme').textContent=t==='dark'?'Light theme':'Dark theme'}
+  function initTheme(){
+    var saved=null;try{saved=localStorage.getItem(THEME_KEY)}catch(e){}
+    if(saved==='light'||saved==='dark')document.documentElement.setAttribute('data-theme',saved);
+    themeLabel();
+  }
+  $('#theme').addEventListener('click',function(){
+    var next=curTheme()==='dark'?'light':'dark';
+    document.documentElement.setAttribute('data-theme',next);
+    try{localStorage.setItem(THEME_KEY,next)}catch(e){}
+    themeLabel();
+  });
+  initTheme();
   S.sel=0;load();$('#port').value=S.port;thr();normTugs();renderTugs();refresh();setTool('pan');loadPort(S.port);
   function redrawAll(){draw();drawShipNow()}
   window.addEventListener('resize',function(){if(!$('[data-step="2"]').hidden)sizeMap()});
