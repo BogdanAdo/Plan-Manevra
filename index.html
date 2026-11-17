@@ -99,6 +99,7 @@ button:disabled{opacity:.5}
 .note{font-size:12.5px;color:var(--muted)}
 .warn{color:var(--warn);font-weight:500}
 .ukc{font-family:var(--f-mono);font-size:13px;color:var(--muted);margin:10px 0 0}
+.ukc.low{color:var(--danger);font-weight:600}
 @media (max-width:420px){.tug{grid-template-columns:30px minmax(0,1.2fr) minmax(0,1fr) 64px 40px}.tughead{grid-template-columns:30px minmax(0,1.2fr) minmax(0,1fr) 64px 40px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -594,13 +595,16 @@ button:disabled{opacity:.5}
 
   /* ---------- derived UI ---------- */
   function num(id){var v=parseFloat($('#'+id).value);return isFinite(v)?v:null}
+  function ukcLow(dp,dr){return Math.round((dp-dr)*100)/100<0.2}
   function refresh(){
     $('#st_route').textContent='Route: '+S.route.length+' pts';
     $('#st_tugs').textContent='Tugs: '+S.tugs.length;
     $('#st_berth').textContent='Berth: '+(S.berth?'set':'not set');
     var dp=num('c_depth'),dr=num('v_draft'),u=$('#ukc');
-    if(dp!==null&&dr!==null){var k=dp-dr;u.textContent='Static under-keel clearance at berth: '+k.toFixed(2)+' m'+(dr>0?' ('+(k/dr*100).toFixed(0)+'% of draft)':'')}
+    var low=false;
+    if(dp!==null&&dr!==null){var k=dp-dr;low=ukcLow(dp,dr);u.textContent='Static under-keel clearance at berth: '+k.toFixed(2)+' m'+(dr>0?' ('+(k/dr*100).toFixed(0)+'% of draft)':'')+(low?'. Below the 0.20 m minimum.':'')}
     else u.textContent='Enter berth depth and vessel draft to see the static under-keel clearance.';
+    u.classList.toggle('low',low);
     var items=[
       ['Vessel particulars',!!($('#v_name').value.trim()&&num('v_loa')&&num('v_beam')&&num('v_draft')),''],
       ['Port',true,PORTS[S.port].name],
@@ -675,7 +679,7 @@ button:disabled{opacity:.5}
         cols.forEach(function(c){var l=doc.splitTextToSize(clean(c[1]||'-'),CW/2-6);lines.push(l);h=Math.max(h,l.length)});
         need(6+h*4.6+2);
         cols.forEach(function(c,k){var x=M+k*(CW/2);doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(gray[0],gray[1],gray[2]);doc.text(clean(c[0]),x,y);
-          doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(ink2[0],ink2[1],ink2[2]);doc.text(lines[k],x,y+4.6)});
+          doc.setFont('helvetica','bold');doc.setFontSize(10);if(c[2]==='red')doc.setTextColor(200,30,30);else doc.setTextColor(ink2[0],ink2[1],ink2[2]);doc.text(lines[k],x,y+4.6)});
         y+=6+h*4.6+1.5;
       }
     }
@@ -705,7 +709,7 @@ button:disabled{opacity:.5}
     pairs([
       ['Wind',(V('c_wdir')||'-')+(V('c_wspd')?' / '+V('c_wspd')+' kn':'')],['Current',V('c_cur')],
       ['Visibility',V('c_vis')],['Water level (m)',V('c_tide')],
-      ['Berth depth (m)',V('c_depth')],['Static UKC at berth',(dp!==null&&dr!==null)?(dp-dr).toFixed(2)+' m':'']
+      ['Berth depth (m)',V('c_depth')],['Static UKC at berth',(dp!==null&&dr!==null)?(dp-dr).toFixed(2)+' m'+(ukcLow(dp,dr)?' (below 0.20 m)':''):'',(dp!==null&&dr!==null&&ukcLow(dp,dr))?'red':'']
     ]);
     sec('Readiness');
     pairs([

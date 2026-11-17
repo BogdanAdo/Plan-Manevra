@@ -1,5 +1,5 @@
 // Offline support. Bump CACHE when you publish a new version of the files.
-const CACHE = 'maneuver-plan-v4';
+const CACHE = 'maneuver-plan-v5';
 const JSPDF_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
 const CORE = [
   './', 'index.html', 'manifest.webmanifest',
