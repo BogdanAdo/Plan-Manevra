@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b5d63">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Maneuver Plan">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+</head><body>
+<title>Constanta Maneuver Plan</title>
+<script src="jspdf.umd.min.js"></script>
+<script>window.jspdf||document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>')</script>
+<style>
+/* Layout: single-column phone app. Four steps (Vessel, Plan, Details, Sign) switched by a bottom tab bar.
+   The plan step is a zoomable chart viewport; overlays are black/white so they read on any chart colour. */
+:root{
+  --bg:#eef2f1; --surface:#ffffff; --fg:#13211f; --muted:#576866; --line:#d2dbd9; --field:#f7faf9;
+  --accent:#0b5d63; --accent-fg:#ffffff; --signal:#c8461a; --ok:#12803c; --danger:#b3261e; --warn:#9a5b00;
+  --f-display:'Space Grotesk',system-ui,sans-serif; --f-body:'IBM Plex Sans',system-ui,sans-serif; --f-mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1516; --surface:#152123; --fg:#e6efee; --muted:#93a7a5; --line:#26393b; --field:#101b1d;
+    --accent:#5cc2c8; --accent-fg:#06282b; --signal:#ff8a57; --ok:#4ad080; --danger:#ff8f86; --warn:#f0b35a; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1516; --surface:#152123; --fg:#e6efee; --muted:#93a7a5; --line:#26393b; --field:#101b1d;
+  --accent:#5cc2c8; --accent-fg:#06282b; --signal:#ff8a57; --ok:#4ad080; --danger:#ff8f86; --warn:#f0b35a; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.45;
+  padding-block:12px calc(84px + env(safe-area-inset-bottom,0px));
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:4px}
+h1{font-family:var(--f-display);font-size:22px;line-height:1.15;margin:0;font-weight:700;text-wrap:balance}
+.sub{margin:2px 0 0;color:var(--muted);font-size:13px}
+h2{font-family:var(--f-display);font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 12px;color:var(--accent);font-weight:700}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.grid .full{grid-column:1/-1}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted);min-width:0}
+input,select,textarea{font:inherit;font-size:16px;color:var(--fg);background:var(--field);border:1px solid var(--line);border-radius:8px;padding:10px 11px;min-height:44px;width:100%;min-width:0}
+textarea{min-height:84px;resize:vertical}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+input[type=number]{font-family:var(--f-mono)}
+.chk{display:flex;align-items:center;gap:10px;min-height:44px;color:var(--fg);font-size:15px}
+.chk input{width:22px;height:22px;min-height:0;accent-color:var(--accent)}
+.thr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 12px;align-items:center}
+button{font:inherit;font-size:14px;font-weight:600;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);min-height:44px;padding:0 14px;cursor:pointer}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+button.ghost{background:transparent}
+button.danger{color:var(--danger)}
+button:disabled{opacity:.5}
+.tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.tools.row4{grid-template-columns:repeat(4,minmax(0,1fr));margin:10px 0 0}
+.tools.row2{grid-template-columns:repeat(2,minmax(0,1fr));margin:8px 0 0}
+.tools button{padding:0 8px}
+.tools button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.mapbox{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--field)}
+#map{display:block;width:100%;aspect-ratio:1000/900;touch-action:none;cursor:grab}
+.hint{font-size:13px;color:var(--muted);margin:8px 0 0}
+.stat{display:flex;flex-wrap:wrap;gap:6px 14px;font-family:var(--f-mono);font-size:12px;color:var(--muted);margin-top:8px}
+.tug{display:grid;grid-template-columns:34px minmax(0,1.3fr) minmax(0,1fr) 78px 44px;gap:6px;align-items:center;margin-top:8px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;min-height:44px}
+.chips button{min-width:56px;padding:0 10px}
+.chips button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+#ship{display:block;width:100%;aspect-ratio:1000/440;touch-action:none;cursor:crosshair}
+.tug .pos{font-size:12.5px;line-height:1.25;min-width:0}
+.tug .n{font-family:var(--f-mono);font-weight:500;background:var(--fg);color:var(--surface);border-radius:6px;text-align:center;padding:6px 0;font-size:13px}
+.tug select,.tug input{padding:8px 6px;font-size:14px}
+.tug button{padding:0;min-width:0}
+.tughead{display:grid;grid-template-columns:34px minmax(0,1.3fr) minmax(0,1fr) 78px 44px;gap:6px;font-size:11.5px;color:var(--muted);margin-top:12px}
+.empty{color:var(--muted);font-size:13px;margin:10px 0 0}
+.sig{display:flex;flex-direction:column;gap:8px}
+.pad{background:#fff;border:1px dashed var(--line);border-radius:8px;touch-action:none;width:100%;aspect-ratio:600/220;display:block;cursor:crosshair}
+.sigrow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
+.sigrow button{min-height:36px;font-size:13px}
+.check{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:14px}
+.check li{display:flex;gap:10px;align-items:baseline}
+.check .dot{width:10px;height:10px;border-radius:50%;background:var(--line);flex:none;transform:translateY(1px)}
+.check li.ok .dot{background:var(--ok)}
+.check li .t{color:var(--muted);font-size:12.5px;margin-left:auto;font-family:var(--f-mono)}
+#msg{min-height:22px;font-size:14px;margin:10px 0 0}
+#msg.err{color:var(--danger)}
+#msg.good{color:var(--ok)}
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);
+  padding:6px max(10px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(10px,env(safe-area-inset-left,0px));
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.nav button{border:0;background:transparent;display:flex;flex-direction:column;align-items:center;gap:2px;min-height:56px;font-size:12px;color:var(--muted);border-radius:8px}
+.nav button b{font-family:var(--f-mono);font-size:15px;font-weight:500}
+.nav button[aria-current="step"]{color:var(--accent-fg);background:var(--accent)}
+.note{font-size:12.5px;color:var(--muted)}
+.warn{color:var(--warn);font-weight:500}
+.ukc{font-family:var(--f-mono);font-size:13px;color:var(--muted);margin:10px 0 0}
+@media (max-width:420px){.tug{grid-template-columns:30px minmax(0,1.2fr) minmax(0,1fr) 64px 40px}.tughead{grid-template-columns:30px minmax(0,1.2fr) minmax(0,1fr) 64px 40px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Constanta Maneuver Plan</h1>
+      <p class="sub">Pilot and Master berthing plan: Constanta North, Agigea, Midia, Mangalia</p>
+    </div>
+    <button id="reset" class="ghost" type="button">New plan</button>
+  </header>
+
+  <!-- STEP 1 -->
+  <section data-step="1" aria-label="Vessel">
+    <div class="card" style="margin-bottom:14px">
+      <h2>Vessel particulars</h2>
+      <div class="grid">
+        <label class="f full">Vessel name<input id="v_name" data-f type="text" autocomplete="off" placeholder="e.g. MV EXAMPLE STAR"></label>
+        <label class="f">LOA (m)<input id="v_loa" data-f type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 229.0"></label>
+        <label class="f">Beam (m)<input id="v_beam" data-f type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 32.2"></label>
+        <label class="f">Draft (m)<input id="v_draft" data-f type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 11.2"></label>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <h2>Transverse thrusters</h2>
+      <div class="thr">
+        <label class="chk"><input id="bt" data-f type="checkbox"> Bow thruster</label>
+        <label class="f">Power (kW)<input id="bt_kw" data-f type="number" inputmode="numeric" min="0" placeholder="optional"></label>
+        <label class="chk"><input id="st" data-f type="checkbox"> Stern thruster</label>
+        <label class="f">Power (kW)<input id="st_kw" data-f type="number" inputmode="numeric" min="0" placeholder="optional"></label>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Maneuver</h2>
+      <div class="grid">
+        <label class="f full">Type
+          <select id="m_type" data-f>
+            <option>Arrival - berthing</option>
+            <option>Departure - unberthing</option>
+            <option>Shifting between berths</option>
+          </select>
+        </label>
+        <label class="f full">Date and time (local)<input id="m_dt" data-f type="datetime-local"></label>
+        <label class="f">Berth number<input id="m_berth" data-f type="text" placeholder="e.g. 34"></label>
+        <label class="f">Berthing side
+          <select id="m_side" data-f><option>Port side to</option><option>Starboard side to</option></select>
+        </label>
+        <label class="f full">Approach
+          <select id="m_mode" data-f><option>Bow in (head first)</option><option>Stern in</option><option>Turn and berth</option></select>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 2 -->
+  <section data-step="2" aria-label="Plan" hidden>
+    <div class="card">
+      <h2>Port plan</h2>
+      <label class="f" style="margin-bottom:12px">Port
+        <select id="port">
+          <option value="cn">Constanta North</option>
+          <option value="ag">Agigea</option>
+          <option value="mi">Midia</option>
+          <option value="ma">Mangalia</option>
+        </select>
+      </label>
+      <div class="tools" role="group" aria-label="Map tools">
+        <button type="button" data-tool="pan" aria-pressed="true">Pan</button>
+        <button type="button" data-tool="route" aria-pressed="false">Route</button>
+        <button type="button" data-tool="tug" aria-pressed="false">Tug</button>
+        <button type="button" data-tool="berth" aria-pressed="false">Berth</button>
+        <button type="button" data-tool="move" aria-pressed="false">Move</button>
+        <button type="button" data-tool="delete" aria-pressed="false">Delete</button>
+      </div>
+      <div class="mapbox"><canvas id="map" aria-label="Port chart. Pinch to zoom, then tap to place route points, tugs and the berth."></canvas></div>
+      <div class="tools row4">
+        <button type="button" id="zout" aria-label="Zoom out">&minus;</button>
+        <button type="button" id="zin" aria-label="Zoom in">+</button>
+        <button type="button" id="zfit">Fit</button>
+        <button type="button" id="undo">Undo</button>
+      </div>
+      <p class="hint" id="hint"></p>
+      <div class="stat"><span id="st_route"></span><span id="st_tugs"></span><span id="st_berth"></span></div>
+      <p class="note" id="chartinfo" style="margin:10px 0 0"></p>
+      <div class="tools row2">
+        <button type="button" id="clearmap" class="danger">Clear map</button>
+        <button type="button" id="chartbtn">Use another chart</button>
+      </div>
+      <input id="chartfile" type="file" accept="image/*" style="display:none">
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h2>Tugs</h2>
+      <div id="tugwrap"></div>
+      <button type="button" id="addtug" style="width:100%;margin-top:12px">Add tug</button>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h2>Tug arrangement on vessel</h2>
+      <div class="chips" id="skchips" role="group" aria-label="Select tug"></div>
+      <div class="mapbox"><canvas id="ship" aria-label="Vessel sketch seen from above, bow to the right. Tap or drag along the hull to place the selected tug."></canvas></div>
+      <p class="hint">Bow to the right, port side up. Select a tug, then tap or drag along the hull to place it. Push and Pull are set in the Tugs list.</p>
+      <p class="note" id="skinfo" style="margin:8px 0 0"></p>
+    </div>
+  </section>
+
+  <!-- STEP 3 -->
+  <section data-step="3" aria-label="Details" hidden>
+    <div class="card" style="margin-bottom:14px">
+      <h2>Conditions</h2>
+      <div class="grid">
+        <label class="f">Wind direction<input id="c_wdir" data-f type="text" placeholder="e.g. NE or 045"></label>
+        <label class="f">Wind speed (kn)<input id="c_wspd" data-f type="number" inputmode="decimal" min="0"></label>
+        <label class="f">Current / set<input id="c_cur" data-f type="text" placeholder="e.g. 0.5 kn S"></label>
+        <label class="f">Visibility<input id="c_vis" data-f type="text" placeholder="e.g. 5 NM"></label>
+        <label class="f">Water level (m)<input id="c_tide" data-f type="number" inputmode="decimal" step="0.01"></label>
+        <label class="f">Berth depth (m)<input id="c_depth" data-f type="number" inputmode="decimal" step="0.1" min="0"></label>
+      </div>
+      <p class="ukc" id="ukc"></p>
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <h2>Ship equipment and readiness</h2>
+      <div class="grid">
+        <label class="f">Propulsion
+          <select id="e_prop" data-f><option>Fixed pitch propeller</option><option>Controllable pitch propeller</option><option>Azimuth / pod</option><option>Other</option></select>
+        </label>
+        <label class="f">Rudder / steering
+          <select id="e_rud" data-f><option>Single rudder</option><option>Twin rudders</option><option>Azimuth / pod</option><option>Other</option></select>
+        </label>
+        <label class="f">Anchors ready
+          <select id="e_anch" data-f><option>Yes, both</option><option>Port only</option><option>Starboard only</option><option>No</option></select>
+        </label>
+        <label class="f">Engine in port
+          <select id="e_eng" data-f><option>Ready, immediate</option><option>Restricted</option><option>Not available</option></select>
+        </label>
+        <label class="f">Mooring lines fwd / aft<input id="e_moor" data-f type="text" placeholder="e.g. 6 fwd / 6 aft"></label>
+        <label class="f">Max port speed (kn)<input id="e_spd" data-f type="number" inputmode="decimal" min="0"></label>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Master and Pilot exchange (IMO A.960)</h2>
+      <div class="grid">
+        <label class="f">Pilot boarding place<input id="i_board" data-f type="text" placeholder="as agreed"></label>
+        <label class="f">Working VHF channel<input id="i_vhf" data-f type="text" placeholder="as agreed"></label>
+        <label class="f full">Contingency and abort plan<textarea id="i_cont" data-f placeholder="Where to anchor, point of no return, loss of power or steering, tug failure"></textarea></label>
+        <label class="f full">Other relevant information<textarea id="i_notes" data-f placeholder="Ship handling characteristics, deficiencies, hazards, restrictions, agreed signals"></textarea></label>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 4 -->
+  <section data-step="4" aria-label="Sign" hidden>
+    <div class="card" style="margin-bottom:14px">
+      <h2>Plan summary</h2>
+      <ul class="check" id="check"></ul>
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <h2>Pilot</h2>
+      <div class="sig">
+        <label class="f">Full name<input id="p_name" data-f type="text" autocomplete="off"></label>
+        <canvas class="pad" id="sig_p" width="600" height="220" aria-label="Pilot signature"></canvas>
+        <div class="sigrow"><span>Sign inside the box</span><button type="button" data-clear="sig_p">Clear</button></div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <h2>Master</h2>
+      <div class="sig">
+        <label class="f">Full name<input id="mm_name" data-f type="text" autocomplete="off"></label>
+        <canvas class="pad" id="sig_m" width="600" height="220" aria-label="Master signature"></canvas>
+        <div class="sigrow"><span>Sign inside the box</span><button type="button" data-clear="sig_m">Clear</button></div>
+      </div>
+    </div>
+    <button id="gen" class="primary" type="button" style="width:100%;min-height:52px;font-size:16px">Generate PDF</button>
+    <p id="msg" role="status" aria-live="polite"></p>
+  </section>
+</div>
+
+<nav class="nav" aria-label="Steps">
+  <button type="button" data-go="1" aria-current="step"><b>1</b>Vessel</button>
+  <button type="button" data-go="2"><b>2</b>Plan</button>
+  <button type="button" data-go="3"><b>3</b>Details</button>
+  <button type="button" data-go="4"><b>4</b>Sign</button>
+</nav>
+
+<script>
+(function(){
+  var $=function(s,r){return (r||document).querySelector(s)}, $$=function(s,r){return [].slice.call((r||document).querySelectorAll(s))};
+  var KEY='constanta-maneuver-plan-v2';
+  var PORTS={
+    cn:{name:'Constanta North',file:'maps/constanta-north.jpg',date:'31 Oct 2025',credit:'Constanta port depth plan, sheet 1, dated 31 Oct 2025'},
+    ag:{name:'Agigea',file:'maps/agigea.jpg',date:'28 May 2025',credit:'Constanta port depth plan, sheet 3 (Agigea area), dated 28 May 2025'},
+    mi:{name:'Midia',file:'maps/midia.jpg',date:'20 May 2020',credit:'Midia depth plan, sheet 2, dated 20 May 2020'},
+    ma:{name:'Mangalia',file:'maps/mangalia.jpg',date:'8 Jan 2019',credit:'Mangalia depth plan, sheet 1, dated 8 Jan 2019'}
+  };
+  var S={port:'cn',route:[],tugs:[],berth:null,berthTmp:null,plans:{},img:null,custom:false,CH:1000,VH:900,status:'',tool:'pan',view:{k:1,tx:0,ty:0},kfit:1};
+  var hist=[],drag=null,gest=null,tap=null,P2=new Map(),ink={sig_p:false,sig_m:false};
+  var cv=$('#map'),cx=cv.getContext('2d'),F=$$('[data-f]');
+
+  /* ---------- storage (light convenience only) ---------- */
+  function getF(){var o={};F.forEach(function(e){o[e.id]=e.type==='checkbox'?e.checked:e.value});return o}
+  function setF(o){F.forEach(function(e){if(!(e.id in o))return;if(e.type==='checkbox')e.checked=!!o[e.id];else e.value=o[e.id]})}
+  function plansNow(){var p=JSON.parse(JSON.stringify(S.plans));p[S.port]={route:S.route,tugs:S.tugs,berth:S.berth};return p}
+  function save(){try{localStorage.setItem(KEY,JSON.stringify({f:getF(),port:S.port,plans:plansNow()}))}catch(e){}}
+  function load(){try{var j=JSON.parse(localStorage.getItem(KEY)||'null');if(!j)return;setF(j.f||{});if(j.port&&PORTS[j.port])S.port=j.port;S.plans=j.plans||{};var p=S.plans[S.port]||{};S.route=p.route||[];S.tugs=p.tugs||[];S.berth=p.berth||null}catch(e){}}
+
+  /* ---------- steps ---------- */
+  function go(n){
+    $$('[data-step]').forEach(function(s){s.hidden=String(s.dataset.step)!==String(n)});
+    $$('[data-go]').forEach(function(b){if(b.dataset.go===String(n))b.setAttribute('aria-current','step');else b.removeAttribute('aria-current')});
+    window.scrollTo(0,0);
+    if(String(n)==='2')requestAnimationFrame(sizeMap);
+    if(String(n)==='4')refresh();
+  }
+  $$('[data-go]').forEach(function(b){b.addEventListener('click',function(){go(b.dataset.go)})});
+
+  /* ---------- chart + view ---------- */
+  function bgCol(){return getComputedStyle(document.documentElement).getPropertyValue('--field').trim()||'#f7faf9'}
+  function setVP(){S.VH=Math.max(700,Math.min(1250,Math.round(S.CH)));cv.style.aspectRatio='1000/'+S.VH}
+  function fit(){var k=Math.min(1,S.VH/S.CH);S.kfit=k;S.view={k:k,tx:(1000-1000*k)/2,ty:(S.VH-S.CH*k)/2}}
+  function clampView(){
+    var v=S.view;v.k=Math.max(S.kfit*0.8,Math.min(S.kfit*24,v.k));
+    v.tx=Math.max(120-1000*v.k,Math.min(880,v.tx));v.ty=Math.max(120-S.CH*v.k,Math.min(S.VH-120,v.ty));
+  }
+  function zoomAt(lx,ly,f){var v=S.view,wx=(lx-v.tx)/v.k,wy=(ly-v.ty)/v.k,nk=Math.max(S.kfit*0.8,Math.min(S.kfit*24,v.k*f));v.tx=lx-wx*nk;v.ty=ly-wy*nk;v.k=nk;clampView();draw()}
+  function sizeMap(){
+    sizeShip();
+    var r=cv.getBoundingClientRect();if(!r.width)return;
+    var d=Math.min(window.devicePixelRatio||1,2.5);
+    cv.width=Math.round(r.width*d);cv.height=Math.round(r.width*S.VH/1000*d);draw();
+  }
+  function loadPort(id){
+    S.port=id;S.img=null;S.custom=false;S.status='Loading chart...';info();draw();
+    var im=new Image();
+    im.onload=function(){if(S.port!==id)return;S.img=im;S.CH=1000*im.naturalHeight/im.naturalWidth;S.status='';setVP();fit();sizeMap()};
+    im.onerror=function(){if(S.port!==id)return;S.status='The chart for this port could not be loaded. Use "Use another chart".';draw()};
+    im.src=PORTS[id].file;
+  }
+  function info(){
+    var p=PORTS[S.port],el=$('#chartinfo');
+    if(S.custom){el.textContent='Chart: image supplied by you.';el.className='note';return}
+    var yr=parseInt(p.date.slice(-4),10),old=yr<=2021;
+    el.innerHTML='Chart: '+p.credit+'. Source: C.N. A.P.M. S.A. Constanta.'+(old?' <span class="warn">This chart is from '+yr+'. Check it against current depth information.</span>':'');
+    el.className='note';
+  }
+
+  /* ---------- drawing ---------- */
+  function tri(c,a,b,size,fill){
+    var ang=Math.atan2(b.y-a.y,b.x-a.x);c.fillStyle=fill;c.beginPath();c.moveTo(b.x,b.y);
+    c.lineTo(b.x-size*Math.cos(ang-.45),b.y-size*Math.sin(ang-.45));c.lineTo(b.x-size*Math.cos(ang+.45),b.y-size*Math.sin(ang+.45));c.closePath();c.fill();
+  }
+  function drawScene(c,bg,V,px,VH){
+    c.save();c.fillStyle=bg;c.fillRect(0,0,1000,VH);
+    if(S.img){c.imageSmoothingEnabled=true;c.imageSmoothingQuality='high';c.drawImage(S.img,V.tx,V.ty,1000*V.k,S.CH*V.k)}
+    else{c.fillStyle='#6b7a78';c.font=(15*px)+'px "IBM Plex Sans",sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText(S.status||'No chart',500,VH/2)}
+    var pt=function(p){return {x:p.x*V.k+V.tx,y:p.y*V.k+V.ty}};
+    var R=S.route.map(pt);
+    if(R.length){
+      c.lineJoin='round';c.lineCap='round';
+      var path=function(){c.beginPath();c.moveTo(R[0].x,R[0].y);for(var i=1;i<R.length;i++)c.lineTo(R[i].x,R[i].y)};
+      if(R.length>1){
+        path();c.setLineDash([]);c.strokeStyle='#fff';c.lineWidth=7*px;c.stroke();
+        path();c.setLineDash([11*px,7*px]);c.strokeStyle='#111';c.lineWidth=3.5*px;c.stroke();c.setLineDash([]);
+        tri(c,R[R.length-2],R[R.length-1],26*px,'#fff');tri(c,R[R.length-2],R[R.length-1],18*px,'#111');
+      }
+      c.font='600 '+(11*px)+'px "IBM Plex Mono",monospace';c.textAlign='center';c.textBaseline='middle';
+      R.forEach(function(p,i){c.fillStyle='#111';c.beginPath();c.arc(p.x,p.y,10*px,0,7);c.fill();c.lineWidth=2*px;c.strokeStyle='#fff';c.stroke();c.fillStyle='#fff';c.fillText(i===0?'S':String(i),p.x,p.y+px*.5)});
+    }
+    if(S.berth){
+      var a=pt(S.berth.a),b=pt(S.berth.b);c.lineCap='butt';
+      c.strokeStyle='#fff';c.lineWidth=12*px;c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();
+      c.strokeStyle='#d6006f';c.lineWidth=7*px;c.beginPath();c.moveTo(a.x,a.y);c.lineTo(b.x,b.y);c.stroke();
+      [a,b].forEach(function(p){c.fillStyle='#d6006f';c.beginPath();c.arc(p.x,p.y,6*px,0,7);c.fill();c.lineWidth=2*px;c.strokeStyle='#fff';c.stroke()});
+      var bn=($('#m_berth').value||'').trim(),lbl='BERTH'+(bn?' '+bn:'');
+      c.font='600 '+(13*px)+'px "IBM Plex Sans",sans-serif';c.textAlign='center';c.textBaseline='middle';
+      var tw=c.measureText(lbl).width+12*px,mx=(a.x+b.x)/2,my=(a.y+b.y)/2-22*px;
+      c.fillStyle='#fff';c.fillRect(mx-tw/2,my-10*px,tw,20*px);c.strokeStyle='#d6006f';c.lineWidth=1.5*px;c.strokeRect(mx-tw/2,my-10*px,tw,20*px);c.fillStyle='#111';c.fillText(lbl,mx,my+px*.5);
+    }
+    if(S.berthTmp){var q=pt(S.berthTmp);c.fillStyle='#d6006f';c.beginPath();c.arc(q.x,q.y,8*px,0,7);c.fill();c.lineWidth=2*px;c.strokeStyle='#fff';c.stroke()}
+    S.tugs.forEach(function(t,i){
+      var p=pt(t),s=30*px,x=p.x-s/2,y=p.y-s/2,r=6*px;
+      c.fillStyle='#fff';c.strokeStyle='#111';c.lineWidth=2.5*px;
+      c.beginPath();c.moveTo(x+r,y);c.arcTo(x+s,y,x+s,y+s,r);c.arcTo(x+s,y+s,x,y+s,r);c.arcTo(x,y+s,x,y,r);c.arcTo(x,y,x+s,y,r);c.closePath();c.fill();c.stroke();
+      c.fillStyle='#111';c.font='600 '+(13*px)+'px "IBM Plex Mono",monospace';c.textAlign='center';c.textBaseline='middle';c.fillText('T'+(i+1),p.x,p.y+px*.5);
+    });
+    c.restore();
+  }
+  function draw(){
+    var r=cv.getBoundingClientRect();if(!r.width||!cv.width)return;
+    var d=cv.width/1000;cx.setTransform(d,0,0,d,0,0);drawScene(cx,bgCol(),S.view,1000/r.width,S.VH);
+  }
+
+  /* ---------- map interaction ---------- */
+  var HINTS={
+    pan:'Pan: drag to move the chart. Pinch with two fingers to zoom, with any tool.',
+    route:'Route: tap to add waypoints in order, from the pilot station to the berth. Zoom in for accuracy.',
+    tug:'Tug: tap to place a tug (up to 6). Set position and mode in the Tugs list below the map.',
+    berth:'Berth: tap the start and then the end of the berth face.',
+    move:'Move: drag any route point, tug or berth end.',
+    delete:'Delete: tap a route point, tug or berth end to remove it.'
+  };
+  function setTool(t){S.tool=t;S.berthTmp=null;$$('[data-tool]').forEach(function(b){b.setAttribute('aria-pressed',b.dataset.tool===t)});$('#hint').textContent=HINTS[t];cv.style.cursor=t==='pan'?'grab':'crosshair';draw()}
+  $$('[data-tool]').forEach(function(b){b.addEventListener('click',function(){setTool(b.dataset.tool)})});
+  function L(cxp,cyp){var r=cv.getBoundingClientRect(),s=1000/r.width;return {x:(cxp-r.left)*s,y:(cyp-r.top)*s,s:s}}
+  function W(l){return {x:(l.x-S.view.tx)/S.view.k,y:(l.y-S.view.ty)/S.view.k}}
+  function snap(){hist.push(JSON.stringify({route:S.route,tugs:S.tugs,berth:S.berth}));if(hist.length>60)hist.shift()}
+  function hit(l){
+    var v=S.view,rad=26*l.s,best=null,bd=rad;
+    var test=function(p,tag){var d=Math.hypot(p.x*v.k+v.tx-l.x,p.y*v.k+v.ty-l.y);if(d<bd){bd=d;best=tag}};
+    S.route.forEach(function(p,i){test(p,{k:'route',i:i})});
+    S.tugs.forEach(function(p,i){test(p,{k:'tug',i:i})});
+    if(S.berth){test(S.berth.a,{k:'berth',w:'a'});test(S.berth.b,{k:'berth',w:'b'})}
+    return best;
+  }
+  function startGest(){
+    var pts=Array.from(P2.values()),mx=(pts[0].x+pts[1].x)/2,my=(pts[0].y+pts[1].y)/2,l=L(mx,my),w=W(l);
+    gest={d0:Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y)||1,k0:S.view.k,wx:w.x,wy:w.y};
+  }
+  function updGest(){
+    var pts=Array.from(P2.values());if(pts.length<2||!gest)return;
+    var mx=(pts[0].x+pts[1].x)/2,my=(pts[0].y+pts[1].y)/2,l=L(mx,my),dist=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);
+    var v=S.view;v.k=gest.k0*dist/gest.d0;v.k=Math.max(S.kfit*0.8,Math.min(S.kfit*24,v.k));v.tx=l.x-gest.wx*v.k;v.ty=l.y-gest.wy*v.k;clampView();draw();
+  }
+  cv.addEventListener('pointerdown',function(e){
+    e.preventDefault();try{cv.setPointerCapture(e.pointerId)}catch(x){}
+    P2.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(P2.size===2){drag=null;tap=null;startGest();return}
+    if(P2.size>2)return;
+    tap={id:e.pointerId,x:e.clientX,y:e.clientY,t:Date.now(),moved:false,lx:e.clientX,ly:e.clientY};
+    if(S.tool==='move'){var h=hit(L(e.clientX,e.clientY));if(h){snap();drag=h}}
+  });
+  cv.addEventListener('pointermove',function(e){
+    if(!P2.has(e.pointerId))return;P2.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(gest){updGest();return}
+    if(!tap||tap.id!==e.pointerId)return;
+    if(Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>8)tap.moved=true;
+    if(drag){
+      var w=W(L(e.clientX,e.clientY));
+      if(drag.k==='route')S.route[drag.i]={x:w.x,y:w.y};else if(drag.k==='tug'){S.tugs[drag.i].x=w.x;S.tugs[drag.i].y=w.y}else S.berth[drag.w]={x:w.x,y:w.y};
+      draw();return;
+    }
+    if(S.tool==='pan'){var s=L(0,0).s;S.view.tx+=(e.clientX-tap.lx)*s;S.view.ty+=(e.clientY-tap.ly)*s;tap.lx=e.clientX;tap.ly=e.clientY;clampView();draw()}
+  });
+  function up(e){
+    var had=P2.has(e.pointerId);P2.delete(e.pointerId);
+    if(gest){if(P2.size<2)gest=null;tap=null;return}
+    if(drag){drag=null;tap=null;save();refresh();return}
+    if(!had||!tap||tap.id!==e.pointerId){tap=null;return}
+    var t=tap;tap=null;
+    if(e.type==='pointercancel'||t.moved||Date.now()-t.t>700)return;
+    var l=L(e.clientX,e.clientY),w=W(l),tool=S.tool;
+    if(tool==='route'){snap();S.route.push(w)}
+    else if(tool==='tug'){if(!addTug(w.x,w.y))return}
+    else if(tool==='berth'){if(!S.berthTmp){S.berthTmp=w}else{snap();S.berth={a:S.berthTmp,b:w};S.berthTmp=null}}
+    else if(tool==='delete'){var h=hit(l);if(h){snap();if(h.k==='route')S.route.splice(h.i,1);else if(h.k==='tug'){S.tugs.splice(h.i,1);renderTugs()}else S.berth=null}else return}
+    else return;
+    draw();refresh();save();
+  }
+  cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+  cv.addEventListener('wheel',function(e){e.preventDefault();var l=L(e.clientX,e.clientY);zoomAt(l.x,l.y,e.deltaY<0?1.25:0.8)},{passive:false});
+  $('#zin').addEventListener('click',function(){zoomAt(500,S.VH/2,1.6)});
+  $('#zout').addEventListener('click',function(){zoomAt(500,S.VH/2,1/1.6)});
+  $('#zfit').addEventListener('click',function(){fit();draw()});
+  $('#undo').addEventListener('click',function(){var j=hist.pop();if(!j)return;var o=JSON.parse(j);S.route=o.route;S.tugs=o.tugs;S.berth=o.berth;S.berthTmp=null;renderTugs();draw();refresh();save()});
+  $('#clearmap').addEventListener('click',function(){var b=this;if(b.dataset.arm!=='1'){b.dataset.arm='1';b.textContent='Tap again to clear';setTimeout(function(){b.dataset.arm='0';b.textContent='Clear map'},2500);return}
+    snap();S.route=[];S.tugs=[];S.berth=null;S.berthTmp=null;b.dataset.arm='0';b.textContent='Clear map';renderTugs();draw();refresh();save()});
+  $('#chartbtn').addEventListener('click',function(){$('#chartfile').click()});
+  $('#chartfile').addEventListener('change',function(){
+    var f=this.files&&this.files[0];if(!f)return;var inp=this,rd=new FileReader();
+    rd.onload=function(){var im=new Image();im.onload=function(){S.img=im;S.custom=true;S.CH=1000*im.naturalHeight/im.naturalWidth;S.status='';setVP();fit();info();sizeMap()};im.src=rd.result};
+    rd.readAsDataURL(f);inp.value='';
+  });
+  $('#port').addEventListener('change',function(){
+    S.plans[S.port]={route:S.route,tugs:S.tugs,berth:S.berth};
+    var id=this.value,p=S.plans[id]||{};S.route=p.route||[];S.tugs=p.tugs||[];S.berth=p.berth||null;S.berthTmp=null;hist=[];S.sel=0;
+    normTugs();renderTugs();refresh();loadPort(id);save();
+  });
+
+  /* ---------- tug list ---------- */
+  var MODE=['Pull','Push','Escort'];
+  var DEF=['Bow','Stern','Port quarter','Starboard bow','Port bow','Starboard quarter'];
+  function opts(a,v){return a.map(function(o){return '<option'+(o===v?' selected':'')+'>'+o+'</option>'}).join('')}
+  function flash(t){var h=$('#hint');h.textContent=t;clearTimeout(flash.t);flash.t=setTimeout(function(){h.textContent=HINTS[S.tool]},2600)}
+  function addTug(wx,wy){
+    if(S.tugs.length>=6){flash('Maximum 6 tugs.');return false}
+    snap();S.tugs.push({x:wx,y:wy,sp:presetSp(DEF[S.tugs.length]),mode:'Pull',bp:''});S.sel=S.tugs.length-1;renderTugs();return true;
+  }
+  function normTugs(){S.tugs.forEach(function(t,i){if(t.sp==null||!isFinite(t.sp))t.sp=presetSp(t.pos||DEF[i]||'Bow');if(!t.mode)t.mode='Pull'});if(S.sel>=S.tugs.length)S.sel=Math.max(0,S.tugs.length-1)}
+  function renderTugs(){
+    var w=$('#tugwrap');
+    if(!S.tugs.length){w.innerHTML='<p class="empty" style="margin:0">No tugs yet. Use the Tug tool on the chart or the button below.</p>'}
+    else{
+      var h='<div class="tughead"><span>#</span><span>Position on vessel</span><span>Mode</span><span>BP (t)</span><span></span></div>';
+      S.tugs.forEach(function(t,i){
+        h+='<div class="tug" data-i="'+i+'"><span class="n">T'+(i+1)+'</span><span class="pos">'+posText(t.sp)+'</span><select data-k="mode" aria-label="Tug '+(i+1)+' mode">'+opts(MODE,t.mode)+'</select><input data-k="bp" type="number" inputmode="numeric" min="0" placeholder="t" value="'+(t.bp||'')+'" aria-label="Tug '+(i+1)+' bollard pull"><button type="button" data-del="'+i+'" aria-label="Remove tug '+(i+1)+'">&times;</button></div>';
+      });
+      w.innerHTML=h;
+    }
+    $('#addtug').disabled=S.tugs.length>=6;
+    $('#skchips').innerHTML=S.tugs.length?S.tugs.map(function(t,i){return '<button type="button" data-sel="'+i+'" aria-pressed="'+(i===S.sel)+'">T'+(i+1)+'</button>'}).join(''):'<span class="empty" style="margin:0">Add a tug to place it on the vessel.</span>';
+    drawShipNow();
+  }
+  $('#tugwrap').addEventListener('input',function(e){var r=e.target.closest('[data-i]');if(!r)return;S.tugs[+r.dataset.i][e.target.dataset.k]=e.target.value;save();drawShipNow()});
+  $('#tugwrap').addEventListener('click',function(e){var b=e.target.closest('[data-del]');if(!b)return;snap();S.tugs.splice(+b.dataset.del,1);normTugs();renderTugs();draw();refresh();save()});
+  $('#addtug').addEventListener('click',function(){var w=W({x:500,y:S.VH/2});if(addTug(w.x,w.y)){draw();refresh();save()}});
+  $('#skchips').addEventListener('click',function(e){var b=e.target.closest('[data-sel]');if(!b)return;S.sel=+b.dataset.sel;renderTugs()});
+
+  /* ---------- vessel sketch (plan view, bow to the right, port side up) ---------- */
+  var SK={W:1000,H:440,x0:150,L:700,cy:220,TL:80,TW:36,PUSH:1,PULL:52};
+  var shipCv=$('#ship'),sx=shipCv.getContext('2d'),skDrag=false,hullCache=null;
+  function ratio(){var l=num('v_loa'),b=num('v_beam'),r=(l&&b)?b/l:0.15;return Math.max(0.08,Math.min(0.2,r))}
+  function hull(){
+    var r0=ratio();if(hullCache&&hullCache.r===r0)return hullCache;
+    var L=SK.L,x0=SK.x0,cy=SK.cy,h=L*r0/2,pts=[],r=Math.min(14,h*.3),bs=x0+L*.72;
+    function bez(p0,p1,p2,p3,n){for(var i=0;i<n;i++){var t=i/n,u=1-t;pts.push({x:u*u*u*p0[0]+3*u*u*t*p1[0]+3*u*t*t*p2[0]+t*t*t*p3[0],y:u*u*u*p0[1]+3*u*u*t*p1[1]+3*u*t*t*p2[1]+t*t*t*p3[1]})}}
+    function line(a,b,n){for(var i=0;i<n;i++){var t=i/n;pts.push({x:a[0]+(b[0]-a[0])*t,y:a[1]+(b[1]-a[1])*t})}}
+    line([x0,cy+h-r],[x0,cy-h+r],30);
+    bez([x0,cy-h+r],[x0,cy-h],[x0,cy-h],[x0+r,cy-h],6);
+    line([x0+r,cy-h],[bs,cy-h],70);
+    bez([bs,cy-h],[x0+L*.9,cy-h],[x0+L,cy-.3*h],[x0+L,cy],50);
+    bez([x0+L,cy],[x0+L,cy+.3*h],[x0+L*.9,cy+h],[bs,cy+h],50);
+    line([bs,cy+h],[x0+r,cy+h],70);
+    bez([x0+r,cy+h],[x0,cy+h],[x0,cy+h],[x0,cy+h-r],6);
+    var n=pts.length;
+    pts.forEach(function(p,i){var a=pts[(i+1)%n],b=pts[(i-1+n)%n],tx=a.x-b.x,ty=a.y-b.y,m=Math.hypot(tx,ty)||1;tx/=m;ty/=m;p.nx=ty;p.ny=-tx;p.tx=tx;p.ty=ty});
+    hullCache={r:r0,h:h,pts:pts,n:n};return hullCache;
+  }
+  function nearestSp(x,y){var H=hull(),bi=0,bd=1e12;H.pts.forEach(function(p,i){var d=(p.x-x)*(p.x-x)+(p.y-y)*(p.y-y);if(d<bd){bd=d;bi=i}});return bi/H.n}
+  var PRES={'Bow':[1,0],'Stern':[0,0],'Port bow':[.88,-1],'Starboard bow':[.88,1],'Port quarter':[.12,-1],'Starboard quarter':[.12,1],'Alongside port':[.5,-1],'Alongside starboard':[.5,1]};
+  function presetSp(name){var q=PRES[name]||PRES.Bow,H=hull();return nearestSp(SK.x0+q[0]*SK.L,SK.cy+q[1]*H.h)}
+  function ptAt(sp){var H=hull();return H.pts[Math.round(sp*H.n)%H.n]}
+  function posText(sp){
+    var p=ptAt(sp),H=hull(),f=(p.x-SK.x0)/SK.L,side=p.y<SK.cy?'Port':'Starboard',dy=Math.abs(p.y-SK.cy),name;
+    if(f>.97&&dy<.5*H.h)name='Bow';else if(f<.03)name='Stern';
+    else if(f>=.7)name=side+' bow';else if(f<=.3)name=side+' quarter';else name='Midship, '+side.toLowerCase();
+    var loa=num('v_loa');return name+(loa&&name!=='Bow'&&name!=='Stern'?', '+Math.round((1-f)*loa)+' m from bow':'');
+  }
+  function tugGeom(t){
+    var p=ptAt(t.sp),push=t.mode==='Push',d=SK.TW/2+(push?SK.PUSH:SK.PULL);
+    return {p:p,cx:p.x+p.nx*d,cy:p.y+p.ny*d,push:push,ang:Math.atan2(p.nx,-p.ny)};
+  }
+  function arrowTo(c,x0,y0,x1,y1,w,col){
+    var a=Math.atan2(y1-y0,x1-x0),hl=w*3.4;
+    c.strokeStyle=col;c.fillStyle=col;c.lineWidth=w;c.lineCap='butt';c.beginPath();c.moveTo(x0,y0);c.lineTo(x1-Math.cos(a)*hl*.6,y1-Math.sin(a)*hl*.6);c.stroke();
+    c.beginPath();c.moveTo(x1,y1);c.lineTo(x1-hl*Math.cos(a-.5),y1-hl*Math.sin(a-.5));c.lineTo(x1-hl*Math.cos(a+.5),y1-hl*Math.sin(a+.5));c.closePath();c.fill();
+  }
+  function drawShip(c,pal,sel,px){
+    var H=hull(),pts=H.pts,x0=SK.x0,L=SK.L,cy=SK.cy,h=H.h;
+    c.save();c.fillStyle=pal.bg;c.fillRect(0,0,SK.W,SK.H);
+    c.beginPath();pts.forEach(function(p,i){if(i)c.lineTo(p.x,p.y);else c.moveTo(p.x,p.y)});c.closePath();
+    c.fillStyle=pal.hull;c.fill();c.lineWidth=3*px/2;c.strokeStyle=pal.edge;c.lineJoin='round';c.stroke();
+    c.strokeStyle=pal.muted;c.lineWidth=1.5*px/2;
+    c.strokeRect(x0+L*.05,cy-h*.62,L*.13,h*1.24);
+    for(var i=0;i<4;i++)c.strokeRect(x0+L*(.26+i*.115),cy-h*.5,L*.095,h);
+    c.setLineDash([10,8]);c.beginPath();c.moveTo(x0-24,cy);c.lineTo(x0+L+24,cy);c.stroke();c.setLineDash([]);
+    c.fillStyle=pal.muted;c.font='500 '+(12*px)+'px "IBM Plex Sans",sans-serif';c.textBaseline='middle';
+    c.textAlign='left';c.fillText('PORT',10,16*px*.8);c.fillText('STBD',10,SK.H-16*px*.8);
+    c.textAlign='right';c.fillText('BOW >',SK.W-10,16*px*.8);
+    var fs=Math.min(15*px,26);
+    S.tugs.forEach(function(t,i){
+      var g=tugGeom(t),p=g.p,isSel=(i===sel),mode=t.mode;
+      if(!g.push){c.strokeStyle=pal.tugEdge;c.lineWidth=2.5*px/2;if(mode==='Escort')c.setLineDash([9,6]);c.beginPath();c.moveTo(p.x,p.y);c.lineTo(g.cx-p.nx*SK.TW/2,g.cy-p.ny*SK.TW/2);c.stroke();c.setLineDash([])}
+      var ex=g.cx+p.nx*(SK.TW/2+6),ey=g.cy+p.ny*(SK.TW/2+6),al=34;
+      if(g.push)arrowTo(c,ex+p.nx*al,ey+p.ny*al,ex,ey,4*px/2,pal.arrow);
+      else arrowTo(c,ex,ey,ex+p.nx*al,ey+p.ny*al,4*px/2,pal.arrow);
+      c.save();c.translate(g.cx,g.cy);c.rotate(g.ang);
+      var w=SK.TL,hh=SK.TW,r=8;c.beginPath();c.moveTo(-w/2+r,-hh/2);c.arcTo(w/2,-hh/2,w/2,hh/2,r);c.arcTo(w/2,hh/2,-w/2,hh/2,r);c.arcTo(-w/2,hh/2,-w/2,-hh/2,r);c.arcTo(-w/2,-hh/2,w/2,-hh/2,r);c.closePath();
+      c.fillStyle=pal.tug;c.fill();c.lineWidth=(isSel?4:2.5)*px/2;c.strokeStyle=isSel?pal.arrow:pal.tugEdge;c.stroke();c.restore();
+      c.fillStyle=pal.tugText;c.font='600 '+fs+'px "IBM Plex Mono",monospace';c.textAlign='center';c.textBaseline='middle';c.fillText('T'+(i+1),g.cx,g.cy+1);
+    });
+    c.restore();
+  }
+  function shipPal(){var cs=getComputedStyle(document.documentElement),g=function(k){return cs.getPropertyValue(k).trim()};
+    return {bg:g('--field'),hull:g('--surface'),edge:g('--fg'),muted:g('--muted'),tug:g('--surface'),tugEdge:g('--fg'),tugText:g('--fg'),arrow:g('--accent')}}
+  var PALPDF={bg:'#ffffff',hull:'#eef2f1',edge:'#13211f',muted:'#6b7a78',tug:'#ffffff',tugEdge:'#111111',tugText:'#111111',arrow:'#0b5d63'};
+  function sizeShip(){var r=shipCv.getBoundingClientRect();if(!r.width)return;var d=Math.min(window.devicePixelRatio||1,2.5);shipCv.width=Math.round(r.width*d);shipCv.height=Math.round(r.width*SK.H/SK.W*d);drawShipNow()}
+  function drawShipNow(){
+    var r=shipCv.getBoundingClientRect();
+    var l=num('v_loa'),b=num('v_beam');$('#skinfo').textContent=(l||b)?'Vessel: '+(l?'LOA '+l+' m':'')+(l&&b?', ':'')+(b?'beam '+b+' m':'')+'. Sketch is schematic, tugs are not to scale.':'Enter LOA and beam in step 1 to scale the hull outline and show distances from the bow.';
+    if(!r.width||!shipCv.width)return;
+    var d=shipCv.width/SK.W;sx.setTransform(d,0,0,d,0,0);drawShip(sx,shipPal(),S.sel,SK.W/r.width);
+  }
+  function skLocal(e){var r=shipCv.getBoundingClientRect(),s=SK.W/r.width;return {x:(e.clientX-r.left)*s,y:(e.clientY-r.top)*s,s:s}}
+  shipCv.addEventListener('pointerdown',function(e){
+    e.preventDefault();if(!S.tugs.length)return;try{shipCv.setPointerCapture(e.pointerId)}catch(x){}
+    var l=skLocal(e),rad=Math.max(48,28*l.s),best=-1,bd=rad;
+    S.tugs.forEach(function(t,i){var g=tugGeom(t),dd=Math.hypot(g.cx-l.x,g.cy-l.y);if(dd<bd){bd=dd;best=i}});
+    snap();
+    if(best>=0){S.sel=best}else{S.tugs[S.sel].sp=nearestSp(l.x,l.y)}
+    skDrag=true;renderTugs();
+  });
+  shipCv.addEventListener('pointermove',function(e){if(!skDrag||!S.tugs.length)return;var l=skLocal(e);S.tugs[S.sel].sp=nearestSp(l.x,l.y);drawShipNow()});
+  function skUp(){if(!skDrag)return;skDrag=false;renderTugs();save()}
+  shipCv.addEventListener('pointerup',skUp);shipCv.addEventListener('pointercancel',skUp);
+
+  /* ---------- derived UI ---------- */
+  function num(id){var v=parseFloat($('#'+id).value);return isFinite(v)?v:null}
+  function refresh(){
+    $('#st_route').textContent='Route: '+S.route.length+' pts';
+    $('#st_tugs').textContent='Tugs: '+S.tugs.length;
+    $('#st_berth').textContent='Berth: '+(S.berth?'set':'not set');
+    var dp=num('c_depth'),dr=num('v_draft'),u=$('#ukc');
+    if(dp!==null&&dr!==null){var k=dp-dr;u.textContent='Static under-keel clearance at berth: '+k.toFixed(2)+' m'+(dr>0?' ('+(k/dr*100).toFixed(0)+'% of draft)':'')}
+    else u.textContent='Enter berth depth and vessel draft to see the static under-keel clearance.';
+    var items=[
+      ['Vessel particulars',!!($('#v_name').value.trim()&&num('v_loa')&&num('v_beam')&&num('v_draft')),''],
+      ['Port',true,PORTS[S.port].name],
+      ['Route drawn',S.route.length>=2,S.route.length+' pts'],
+      ['Berth marked',!!S.berth,$('#m_berth').value.trim()],
+      ['Tugs placed',S.tugs.length>0,String(S.tugs.length)],
+      ['Pilot name and signature',!!($('#p_name').value.trim()&&ink.sig_p),''],
+      ['Master name and signature',!!($('#mm_name').value.trim()&&ink.sig_m),'']
+    ];
+    $('#check').innerHTML=items.map(function(it){return '<li class="'+(it[1]?'ok':'')+'"><span class="dot"></span>'+it[0]+'<span class="t">'+it[2]+'</span></li>'}).join('');
+  }
+  F.forEach(function(e){e.addEventListener('input',function(){save();refresh();if(e.id==='m_berth')draw();if(e.id==='v_loa'||e.id==='v_beam'){hullCache=null;renderTugs()}});e.addEventListener('change',function(){save();refresh()})});
+  function thr(){$('#bt_kw').disabled=!$('#bt').checked;$('#st_kw').disabled=!$('#st').checked}
+  $('#bt').addEventListener('change',thr);$('#st').addEventListener('change',thr);
+
+  /* ---------- signature pads ---------- */
+  function pad(id){
+    var c=document.getElementById(id),g=c.getContext('2d'),down=false,last=null;
+    g.lineWidth=4;g.lineCap='round';g.lineJoin='round';g.strokeStyle='#0a1a3a';
+    function p(e){var r=c.getBoundingClientRect();return {x:(e.clientX-r.left)*c.width/r.width,y:(e.clientY-r.top)*c.height/r.height}}
+    c.addEventListener('pointerdown',function(e){e.preventDefault();down=true;last=p(e);try{c.setPointerCapture(e.pointerId)}catch(x){}g.beginPath();g.arc(last.x,last.y,2,0,7);g.fillStyle='#0a1a3a';g.fill();ink[id]=true});
+    c.addEventListener('pointermove',function(e){if(!down)return;var q=p(e);g.beginPath();g.moveTo(last.x,last.y);g.lineTo(q.x,q.y);g.stroke();last=q});
+    var upf=function(){if(down){down=false;refresh()}};
+    c.addEventListener('pointerup',upf);c.addEventListener('pointercancel',upf);
+  }
+  pad('sig_p');pad('sig_m');
+  $$('[data-clear]').forEach(function(b){b.addEventListener('click',function(){var c=document.getElementById(b.dataset.clear);c.getContext('2d').clearRect(0,0,c.width,c.height);ink[b.dataset.clear]=false;refresh()})});
+
+  /* ---------- reset ---------- */
+  $('#reset').addEventListener('click',function(){
+    var b=this;if(b.dataset.arm!=='1'){b.dataset.arm='1';b.textContent='Tap again to erase all';setTimeout(function(){b.dataset.arm='0';b.textContent='New plan'},2800);return}
+    b.dataset.arm='0';b.textContent='New plan';
+    F.forEach(function(e){if(e.type==='checkbox')e.checked=false;else if(e.tagName==='SELECT')e.selectedIndex=0;else e.value=''});
+    S.route=[];S.tugs=[];S.berth=null;S.berthTmp=null;S.plans={};hist=[];
+    ['sig_p','sig_m'].forEach(function(id){var c=document.getElementById(id);c.getContext('2d').clearRect(0,0,c.width,c.height);ink[id]=false});
+    try{localStorage.removeItem(KEY)}catch(x){}
+    thr();renderTugs();refresh();if(S.custom)loadPort(S.port);else draw();go(1);
+  });
+
+  /* ---------- PDF ---------- */
+  function toast(t,k){var m=$('#msg');m.textContent=t;m.className=k||''}
+  function clean(s){return String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\x20-\x7E\n]/g,'?')}
+  function fmtDT(v){if(!v)return '';var m=/^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})/.exec(v);return m?m[3]+'/'+m[2]+'/'+m[1]+' '+m[4]+' LT':v}
+  function mapExport(){
+    var E=Math.min(S.img.naturalWidth||2400,2400),c=document.createElement('canvas');c.width=E;c.height=Math.round(E*S.CH/1000);
+    var g=c.getContext('2d');g.setTransform(E/1000,0,0,E/1000,0,0);drawScene(g,'#ffffff',{k:1,tx:0,ty:0},1000/520,S.CH);
+    return c.toDataURL('image/jpeg',0.88);
+  }
+  function buildPdf(){
+    var J=window.jspdf.jsPDF,doc=new J({unit:'mm',format:'a4'}),Wd=210,M=15,CW=Wd-2*M,y=0,PT=PORTS[S.port];
+    var teal=[11,93,99],ink2=[19,33,31],gray=[100,115,113],line=[210,219,217];
+    function head(){
+      doc.setFillColor(teal[0],teal[1],teal[2]);doc.rect(0,0,Wd,22,'F');
+      doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(14);doc.text('MANEUVER PLAN - '+clean(PT.name).toUpperCase()+' PORT',M,10);
+      doc.setFont('helvetica','normal');doc.setFontSize(9);
+      doc.text(clean($('#v_name').value||'Vessel'),M,16.5);var dt=fmtDT($('#m_dt').value);if(dt)doc.text(dt,Wd-M,16.5,{align:'right'});
+      y=30;
+    }
+    function need(h){if(y+h>282){doc.addPage();head()}}
+    function sec(t){need(16);doc.setTextColor(teal[0],teal[1],teal[2]);doc.setFont('helvetica','bold');doc.setFontSize(9);doc.text(t.toUpperCase(),M,y);doc.setDrawColor(teal[0],teal[1],teal[2]);doc.setLineWidth(.4);doc.line(M,y+1.8,Wd-M,y+1.8);y+=8}
+    function pairs(list){
+      for(var i=0;i<list.length;i+=2){
+        var cols=[list[i],list[i+1]].filter(Boolean),h=0,lines=[];
+        cols.forEach(function(c){var l=doc.splitTextToSize(clean(c[1]||'-'),CW/2-6);lines.push(l);h=Math.max(h,l.length)});
+        need(6+h*4.6+2);
+        cols.forEach(function(c,k){var x=M+k*(CW/2);doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(gray[0],gray[1],gray[2]);doc.text(clean(c[0]),x,y);
+          doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(ink2[0],ink2[1],ink2[2]);doc.text(lines[k],x,y+4.6)});
+        y+=6+h*4.6+1.5;
+      }
+    }
+    function block(label,val){
+      var l=doc.splitTextToSize(clean(val||'-'),CW);need(6+l.length*4.4+2);
+      doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(gray[0],gray[1],gray[2]);doc.text(clean(label),M,y);
+      doc.setFontSize(10);doc.setTextColor(ink2[0],ink2[1],ink2[2]);doc.text(l,M,y+4.6);y+=6+l.length*4.4+1.5;
+    }
+    var V=function(id){return ($('#'+id).value||'').trim()};
+    head();
+    sec('Vessel particulars');
+    pairs([
+      ['Vessel name',V('v_name')],['Draft (m)',V('v_draft')],
+      ['LOA (m)',V('v_loa')],['Beam (m)',V('v_beam')],
+      ['Propulsion',V('e_prop')],['Rudder / steering',V('e_rud')],
+      ['Bow thruster',$('#bt').checked?'Yes'+(V('bt_kw')?' - '+V('bt_kw')+' kW':''):'No'],['Stern thruster',$('#st').checked?'Yes'+(V('st_kw')?' - '+V('st_kw')+' kW':''):'No']
+    ]);
+    sec('Maneuver');
+    pairs([
+      ['Port',PT.name],['Type',V('m_type')],
+      ['Date and time',fmtDT(V('m_dt'))],['Berth',V('m_berth')],
+      ['Berthing side',V('m_side')],['Approach',V('m_mode')],
+      ['Tugs',String(S.tugs.length)]
+    ]);
+    sec('Conditions');
+    var dp=num('c_depth'),dr=num('v_draft');
+    pairs([
+      ['Wind',(V('c_wdir')||'-')+(V('c_wspd')?' / '+V('c_wspd')+' kn':'')],['Current',V('c_cur')],
+      ['Visibility',V('c_vis')],['Water level (m)',V('c_tide')],
+      ['Berth depth (m)',V('c_depth')],['Static UKC at berth',(dp!==null&&dr!==null)?(dp-dr).toFixed(2)+' m':'']
+    ]);
+    sec('Readiness');
+    pairs([
+      ['Anchors ready',V('e_anch')],['Engine in port',V('e_eng')],
+      ['Mooring lines fwd / aft',V('e_moor')],['Max port speed (kn)',V('e_spd')]
+    ]);
+    sec('Master and Pilot information exchange (IMO A.960)');
+    pairs([['Pilot boarding place',V('i_board')],['Working VHF channel',V('i_vhf')]]);
+    block('Contingency and abort plan',V('i_cont'));
+    block('Other relevant information',V('i_notes'));
+
+    doc.addPage();head();
+    sec('Maneuver plan - '+PT.name);
+    var ratio=S.CH/1000,availH=282-y-16,w=CW,h=w*ratio;
+    if(h>availH){h=availH;w=h/ratio}
+    var ix=M+(CW-w)/2;doc.addImage(mapExport(),'JPEG',ix,y,w,h);doc.setDrawColor(line[0],line[1],line[2]);doc.setLineWidth(.3);doc.rect(ix,y,w,h);y+=h+4;
+    doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(gray[0],gray[1],gray[2]);
+    doc.text('Legend: dashed black line = vessel route (S = start, numbers = waypoints, arrow = direction); white boxes T1.. = tugs; magenta bar = berth face.',M,y);y+=3.8;
+
+    doc.addPage();head();
+    sec('Tug arrangement on vessel');
+    var sk=document.createElement('canvas');sk.width=2000;sk.height=880;var sg=sk.getContext('2d');sg.setTransform(2,0,0,2,0,0);drawShip(sg,PALPDF,-1,1.3);
+    var sh=CW*SK.H/SK.W;doc.addImage(sk.toDataURL('image/png'),'PNG',M,y,CW,sh);doc.setDrawColor(line[0],line[1],line[2]);doc.setLineWidth(.3);doc.rect(M,y,CW,sh);y+=sh+4;
+    doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(gray[0],gray[1],gray[2]);
+    var vl=V('v_loa'),vb=V('v_beam');
+    doc.text('Plan view, bow to the right, port side up. Schematic: tugs are not to scale.'+(vl||vb?' Vessel '+(vl?'LOA '+vl+' m':'')+(vl&&vb?', ':'')+(vb?'beam '+vb+' m':'')+'.':''),M,y);y+=3.8;
+    doc.text('Push: arrow towards the hull. Pull: arrow away from the hull, towline shown. Escort: as Pull, dashed towline.',M,y);y+=8;
+
+    sec('Tugs');
+    if(!S.tugs.length){doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(ink2[0],ink2[1],ink2[2]);doc.text('No tugs planned.',M,y);y+=7}
+    else{
+      need(8+S.tugs.length*7);
+      doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(gray[0],gray[1],gray[2]);
+      doc.text('TUG',M,y);doc.text('POSITION ON VESSEL',M+14,y);doc.text('MODE',M+118,y);doc.text('BOLLARD PULL (t)',M+145,y);y+=2;doc.setDrawColor(line[0],line[1],line[2]);doc.line(M,y,Wd-M,y);y+=5;
+      doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(ink2[0],ink2[1],ink2[2]);
+      S.tugs.forEach(function(t,i){doc.text('T'+(i+1),M,y);doc.text(clean(posText(t.sp)),M+14,y);doc.text(clean(t.mode),M+118,y);doc.text(clean(t.bp||'-'),M+145,y);y+=6.5});
+      y+=2;
+    }
+    need(62);y+=2;sec('Acknowledgement');
+    doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(gray[0],gray[1],gray[2]);
+    var ack=doc.splitTextToSize('The Master and the Pilot have discussed and agreed this maneuver plan, including the use of tugs, the berthing arrangement and the contingency actions. The Master remains in command of the vessel.',CW);
+    doc.text(ack,M,y);y+=ack.length*4+4;
+    var now=new Date(),z=function(n){return ('0'+n).slice(-2)},stamp=z(now.getDate())+'/'+z(now.getMonth()+1)+'/'+now.getFullYear()+' '+z(now.getHours())+':'+z(now.getMinutes())+' LT';
+    [['Pilot','p_name','sig_p'],['Master','mm_name','sig_m']].forEach(function(s,k){
+      var x=M+k*(CW/2+4),bw=CW/2-4;
+      doc.setDrawColor(line[0],line[1],line[2]);doc.setLineWidth(.3);doc.rect(x,y,bw,38);
+      doc.addImage(document.getElementById(s[2]).toDataURL('image/png'),'PNG',x+4,y+3,50,18.3);
+      doc.setDrawColor(ink2[0],ink2[1],ink2[2]);doc.line(x+4,y+23,x+bw-4,y+23);
+      doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(ink2[0],ink2[1],ink2[2]);doc.text(clean(V(s[1])),x+4,y+28.5);
+      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(gray[0],gray[1],gray[2]);doc.text(s[0],x+4,y+32.5);doc.text('Signed '+stamp,x+4,y+36);
+    });
+    var n=doc.getNumberOfPages();
+    for(var p=1;p<=n;p++){doc.setPage(p);doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(gray[0],gray[1],gray[2]);
+      doc.text('Planning aid only. Verify against official charts, port regulations and pilotage rules.',M,291);doc.text('Page '+p+' of '+n,Wd-M,291,{align:'right'})}
+    return doc;
+  }
+  $('#gen').addEventListener('click',async function(){
+    var miss=[];
+    if(!$('#v_name').value.trim())miss.push('vessel name');
+    if(!num('v_loa')||!num('v_beam')||!num('v_draft'))miss.push('LOA, beam and draft');
+    if(!S.img)miss.push('a loaded chart (step 2)');
+    if(!$('#p_name').value.trim()||!ink.sig_p)miss.push('pilot name and signature');
+    if(!$('#mm_name').value.trim()||!ink.sig_m)miss.push('master name and signature');
+    if(miss.length){toast('Still needed: '+miss.join(', ')+'.','err');return}
+    if(!window.jspdf){toast('The PDF library did not load. Check the connection and reload.','err');return}
+    var btn=this;btn.disabled=true;toast('Building PDF...','');
+    try{
+      var doc=buildPdf(),blob=doc.output('blob');
+      var name='Maneuver-plan_'+PORTS[S.port].name.replace(/\s+/g,'-')+'_'+($('#v_name').value.trim().replace(/[^A-Za-z0-9]+/g,'-').replace(/^-|-$/g,'')||'vessel')+'_'+new Date().toISOString().slice(0,10)+'.pdf';
+      var file=null;try{file=new File([blob],name,{type:'application/pdf'})}catch(x){}
+      var ios=/iP(hone|od|ad)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+      if(ios&&file&&navigator.canShare&&navigator.canShare({files:[file]})){
+        try{await navigator.share({files:[file],title:name});toast('PDF ready: '+name,'good');return}
+        catch(x){if(x&&x.name==='AbortError'){toast('Save cancelled.','');return}}
+      }
+      var url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();
+      setTimeout(function(){a.remove();URL.revokeObjectURL(url)},4000);
+      toast('PDF saved: '+name+'. Look in your Downloads or Files app.','good');
+    }catch(err){
+      if(err&&err.code==='declined')toast('Save cancelled.','');
+      else toast('Could not save the PDF'+(err&&err.message?' ('+err.message+')':'')+'.','err');
+    }finally{btn.disabled=false}
+  });
+
+  /* ---------- init ---------- */
+  S.sel=0;load();$('#port').value=S.port;thr();normTugs();renderTugs();refresh();setTool('pan');loadPort(S.port);
+  function redrawAll(){draw();drawShipNow()}
+  window.addEventListener('resize',function(){if(!$('[data-step="2"]').hidden)sizeMap()});
+  try{window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',redrawAll)}catch(e){}
+  new MutationObserver(redrawAll).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+})();
+</script>
+
+<script>
+if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){})})}
+</script>
+</body></html>
