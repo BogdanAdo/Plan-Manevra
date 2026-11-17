@@ -25,7 +25,7 @@ PDF
  iPhone: se deschide meniul Share; alege "Save to Files" sau trimite PDF-ul direct pe email.
 
 ACTUALIZARE
- Incarca fisierele noi peste cele vechi in repository. In sw.js schimba "maneuver-plan-v1" in "maneuver-plan-v2",
+ Incarca fisierele noi peste cele vechi in repository. In sw.js schimba "maneuver-plan-v2" in "maneuver-plan-v3" (numarul creste la fiecare versiune noua),
  ca telefoanele sa primeasca versiunea noua.
 
 OPTIONAL (recomandat)

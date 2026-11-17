@@ -301,7 +301,7 @@ button:disabled{opacity:.5}
   function setF(o){F.forEach(function(e){if(!(e.id in o))return;if(e.type==='checkbox')e.checked=!!o[e.id];else e.value=o[e.id]})}
   function plansNow(){var p=JSON.parse(JSON.stringify(S.plans));p[S.port]={route:S.route,tugs:S.tugs,berth:S.berth};return p}
   function save(){try{localStorage.setItem(KEY,JSON.stringify({f:getF(),port:S.port,plans:plansNow()}))}catch(e){}}
-  function load(){try{var j=JSON.parse(localStorage.getItem(KEY)||'null');if(!j)return;setF(j.f||{});if(j.port&&PORTS[j.port])S.port=j.port;S.plans=j.plans||{};var p=S.plans[S.port]||{};S.route=p.route||[];S.tugs=p.tugs||[];S.berth=p.berth||null}catch(e){}}
+  function load(){try{var j=JSON.parse(localStorage.getItem(KEY)||'null');if(!j)return;setF(j.f||{});fillMode((j.f||{}).m_mode);if(j.port&&PORTS[j.port])S.port=j.port;S.plans=j.plans||{};var p=S.plans[S.port]||{};S.route=p.route||[];S.tugs=p.tugs||[];S.berth=p.berth||null}catch(e){}}
 
   /* ---------- steps ---------- */
   function go(n){
@@ -615,6 +615,13 @@ button:disabled{opacity:.5}
   F.forEach(function(e){e.addEventListener('input',function(){save();refresh();if(e.id==='m_berth')draw();if(e.id==='v_loa'||e.id==='v_beam'){hullCache=null;renderTugs()}});e.addEventListener('change',function(){save();refresh()})});
   function thr(){$('#bt_kw').disabled=!$('#bt').checked;$('#st_kw').disabled=!$('#st').checked}
   $('#bt').addEventListener('change',thr);$('#st').addEventListener('change',thr);
+  var MODES={arr:['Bow in (head first)','Stern in','Turn and berth'],dep:['Bow out (head first)','Stern out','Turn and unberth']};
+  function fillMode(keep){
+    var dep=$('#m_type').value.indexOf('Departure')===0,list=dep?MODES.dep:MODES.arr,sel=$('#m_mode');
+    sel.innerHTML=list.map(function(o){return '<option>'+o+'</option>'}).join('');
+    sel.value=(keep&&list.indexOf(keep)>=0)?keep:list[0];
+  }
+  $('#m_type').addEventListener('change',function(){fillMode(null);save();refresh()});
 
   /* ---------- signature pads ---------- */
   function pad(id){
@@ -634,7 +641,7 @@ button:disabled{opacity:.5}
     var b=this;if(b.dataset.arm!=='1'){b.dataset.arm='1';b.textContent='Tap again to erase all';setTimeout(function(){b.dataset.arm='0';b.textContent='New plan'},2800);return}
     b.dataset.arm='0';b.textContent='New plan';
     F.forEach(function(e){if(e.type==='checkbox')e.checked=false;else if(e.tagName==='SELECT')e.selectedIndex=0;else e.value=''});
-    S.route=[];S.tugs=[];S.berth=null;S.berthTmp=null;S.plans={};hist=[];
+    fillMode(null);S.route=[];S.tugs=[];S.berth=null;S.berthTmp=null;S.plans={};hist=[];
     ['sig_p','sig_m'].forEach(function(id){var c=document.getElementById(id);c.getContext('2d').clearRect(0,0,c.width,c.height);ink[id]=false});
     try{localStorage.removeItem(KEY)}catch(x){}
     thr();renderTugs();refresh();if(S.custom)loadPort(S.port);else draw();go(1);
